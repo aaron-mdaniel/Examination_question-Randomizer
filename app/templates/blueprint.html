@@ -1,0 +1,63 @@
+
+{% extends "base.html" %}
+
+{% block title %}Exam Blueprint{% endblock %}
+
+{% block content %}
+<h1 class="h2">Exam Blueprint</h1>
+
+<p>
+  Exam: <strong>{{ exam.title }}</strong><br>
+  Subject: {{ exam.subject }}<br>
+  Required questions: {{ exam.question_count }}
+</p>
+
+<div class="alert alert-info">
+  Topic counts and difficulty counts must each total
+  {{ exam.question_count }}.
+  Topic names must exactly match those in the question bank.
+</div>
+
+<form method="post" class="card card-body">
+  <label class="form-label" for="topic_counts">
+    Topic distribution
+  </label>
+
+  <textarea
+    class="form-control mb-3"
+    id="topic_counts"
+    name="topic_counts"
+    rows="5"
+    required
+    placeholder="SQL: 2&#10;Normalization: 2"
+  >{% for topic, count in topic_counts.items() %}{{ topic }}: {{ count }}
+{% endfor %}</textarea>
+
+  <h2 class="h5">Difficulty distribution</h2>
+
+  {% for level in ["easy", "medium", "hard"] %}
+    <label class="form-label" for="{{ level }}_count">
+      {{ level|capitalize }} questions
+    </label>
+
+    <input
+      class="form-control mb-3"
+      type="number"
+      min="0"
+      id="{{ level }}_count"
+      name="{{ level }}_count"
+      value="{{ difficulty_counts[level] }}"
+      required
+    >
+  {% endfor %}
+
+  <button class="btn btn-primary">
+    Save Blueprint
+  </button>
+
+  <a class="btn btn-outline-secondary mt-2"
+     href="{{ url_for('main.dashboard') }}">
+    Back to Dashboard
+  </a>
+</form>
+{% endblock %}

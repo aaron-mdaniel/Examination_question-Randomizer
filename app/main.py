@@ -4,7 +4,7 @@ from functools import wraps
 from flask import Blueprint, abort, flash, redirect, render_template, request, url_for
 from flask_login import current_user, login_required
 from app import db
-from app.models import Exam, GeneratedPaper, GeneratedPaperQuestion, Question
+from app.models import Exam, ExamBlueprint, GeneratedPaper, GeneratedPaperQuestion, Question
 
 main_bp = Blueprint("main", __name__)
 
@@ -142,6 +142,138 @@ def new_exam():
         flash("Exam configuration created.", "success")
         return redirect(url_for("main.dashboard"))
     return render_template("exam_form.html")
+
+
+@main_bp.route("/exams/<int:exam_id>/blueprint", methods=["GET", "POST"])
+@teacher_required
+def exam_blueprint(exam_id):
+    exam = db.session.get(Exam, exam_id)
+
+    if exam is None:
+        abort(404)
+
+    blueprint = ExamBlueprint.query.filter_by(
+        exam_id=exam.id
+    ).first()
+
+    if request.method == "POST":
+        topic_counts = {}
+
+        for line in request.form.get("topic_counts", "").splitlines():
+            line = line.strip()
+
+            if not line:
+                continue
+
+            if ":" not in line:
+                flash("Use the format Topic: count.", "danger")
+                return redirect(
+                    url_for("main.exam_blueprint", exam_id=exam.id)
+                )
+
+            topic, count_text = line.rsplit(":", 1)
+
+            try:
+                count = int(count_text.strip())
+                if not topic.strip() or count < 1:
+                    raise ValueError
+            except ValueError:
+                flash(
+                    "Each topic needs a name and a positive count.",
+                    "danger"
+                )
+                return redirect(
+                    url_for("main.exam_blueprint", exam_id=exam.id)
+                )
+
+            topic = topic.strip()
+
+            if topic in topic_counts:
+                flash(f"Duplicate topic: {topic}", "danger")
+                return redirect(
+                    url_for("main.exam_blueprint", exam_id=exam.id)
+                )
+
+            topic_counts[topic] = count
+
+        try:
+            difficulty_counts = {
+                level: int(request.form.get(level + "_count", "0"))
+                for level in ("easy", "medium", "hard")
+            }
+
+            if any(value < 0 for value in difficulty_counts.values()):
+                raise ValueError
+        except ValueError:
+            flash("Difficulty counts must be non-negative integers.", "danger")
+            return redirect(
+                url_for("main.exam_blueprint", exam_id=exam.id)
+            )
+
+        if not topic_counts:
+            flash("Enter at least one topic.", "danger")
+        elif sum(topic_counts.values()) != exam.question_count:
+            flash(
+                f"Topic counts must total {exam.question_count}.",
+                "danger"
+            )
+        elif sum(difficulty_counts.values()) != exam.question_count:
+            flash(
+                f"Difficulty counts must total {exam.question_count}.",
+                "danger"
+            )
+        else:
+            available_topics = {
+                row[0]
+                for row in db.session.query(Question.topic)
+                .filter_by(subject=exam.subject)
+                .distinct()
+                .all()
+            }
+
+            unknown = set(topic_counts) - available_topics
+
+            if unknown:
+                flash(
+                    "Unknown topics for this subject: "
+                    + ", ".join(sorted(unknown)),
+                    "danger"
+                )
+            else:
+                if blueprint is None:
+                    blueprint = ExamBlueprint(exam_id=exam.id)
+                    db.session.add(blueprint)
+
+                blueprint.topic_counts_json = json.dumps(topic_counts)
+                blueprint.difficulty_counts_json = json.dumps(
+                    difficulty_counts
+                )
+
+                db.session.commit()
+                flash("Exam blueprint saved.", "success")
+
+                return redirect(url_for("main.dashboard"))
+
+        return redirect(
+            url_for("main.exam_blueprint", exam_id=exam.id)
+        )
+
+    topic_counts = (
+        json.loads(blueprint.topic_counts_json)
+        if blueprint else {}
+    )
+
+    difficulty_counts = (
+        json.loads(blueprint.difficulty_counts_json)
+        if blueprint else {"easy": 0, "medium": 0, "hard": 0}
+    )
+
+    return render_template(
+        "blueprint.html",
+        exam=exam,
+        topic_counts=topic_counts,
+        difficulty_counts=difficulty_counts
+    )
 
 @main_bp.route("/exams/<int:exam_id>/generate", methods=["POST"])
 @teacher_required

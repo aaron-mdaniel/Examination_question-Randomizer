@@ -65,3 +65,24 @@ class GeneratedPaperQuestion(db.Model):
     paper_id = db.Column(db.Integer, db.ForeignKey("generated_paper.id"), nullable=False)
     question_id = db.Column(db.Integer, db.ForeignKey("question.id"), nullable=False)
     position = db.Column(db.Integer, nullable=False)
+
+
+class ExamBlueprint(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+
+    exam_id = db.Column(
+        db.Integer,
+        db.ForeignKey("exam.id"),
+        unique=True,
+        nullable=False
+    )
+
+    topic_counts_json = db.Column(db.Text, nullable=False)
+    difficulty_counts_json = db.Column(db.Text, nullable=False)
+
+    updated_at = db.Column(
+        db.DateTime,
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow,
+        nullable=False
+    )

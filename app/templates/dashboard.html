@@ -17,10 +17,27 @@
 <h2 class="h4">Recent exam configurations</h2>
 {% if exams %}
 <div class="table-responsive"><table class="table table-striped align-middle">
-<thead><tr><th>Exam</th><th>Subject</th><th>Questions</th><th>Duration</th><th>Action</th></tr></thead><tbody>
+<thead><tr><th>Exam</th><th>Subject</th><th>Questions</th><th>Duration</th><th>Action</th><th>Blueprint</th></tr></thead><tbody>
 {% for exam in exams %}
-<tr><td>{{ exam.title }}</td><td>{{ exam.subject }}</td><td>{{ exam.question_count }}</td><td>{{ exam.duration_minutes }} min</td>
-<td>{% if current_user.role == 'teacher' %}<form method="post" action="{{ url_for('main.generate_paper', exam_id=exam.id) }}"><button class="btn btn-sm btn-success">Generate paper</button></form>{% else %}<span class="text-muted">Student view coming later</span>{% endif %}</td></tr>
+<tr>
+  <td>{{ exam.title }}</td>
+  <td>{{ exam.subject }}</td>
+  <td>{{ exam.question_count }}</td>
+  <td>{{ exam.duration_minutes }} min</td>
+  <td>{% if current_user.role == 'teacher' %}
+    <form method="post" action="{{ url_for('main.generate_paper', exam_id=exam.id) }}">
+      <button class="btn btn-sm btn-success">Generate paper</button>
+    </form>{% else %}<span class="text-muted">Student view coming later</span>{% endif %}
+  </td>
+  <td>
+    <a
+      class="btn btn-sm btn-outline-primary"
+      href="{{ url_for('main.exam_blueprint', exam_id=exam.id) }}"
+    >
+      Configure Blueprint
+    </a>
+  </td>
+</tr>
 {% endfor %}
 </tbody></table></div>
 {% else %}<p class="text-muted">No exams yet. Create an exam configuration to get started.</p>{% endif %}
