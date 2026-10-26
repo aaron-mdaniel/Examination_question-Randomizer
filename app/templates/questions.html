@@ -1,11 +1,28 @@
 {% extends "base.html" %}
 {% block title %}Question bank | Exam Randomizer{% endblock %}
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-3"><h1 class="h2">Question bank</h1><a class="btn btn-primary" href="{{ url_for('main.new_question') }}">Add question</a></div>
-<form class="row g-2 mb-3"><div class="col-auto"><input class="form-control" name="subject" value="{{ subject }}" placeholder="Filter by subject"></div><div class="col-auto"><button class="btn btn-outline-secondary">Filter</button></div></form>
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+  <div><h1 class="h2 mb-1">Question bank</h1><p class="text-muted mb-0">Search, filter, edit, or remove questions.</p></div>
+  <a class="btn btn-primary" href="{{ url_for('main.new_question') }}">Add question</a>
+</div>
+<form method="get" class="card card-body mb-3">
+  <div class="row g-3">
+    <div class="col-lg-4"><label class="form-label" for="q">Search question text</label><input class="form-control" id="q" name="q" value="{{ search_text }}" placeholder="Enter keyword"></div>
+    <div class="col-md-4 col-lg-2"><label class="form-label" for="subject">Subject</label><select class="form-select" id="subject" name="subject"><option value="">All subjects</option>{% for v in subjects %}<option value="{{ v }}" {% if subject == v %}selected{% endif %}>{{ v }}</option>{% endfor %}</select></div>
+    <div class="col-md-4 col-lg-2"><label class="form-label" for="topic">Topic</label><select class="form-select" id="topic" name="topic"><option value="">All topics</option>{% for v in topics %}<option value="{{ v }}" {% if topic == v %}selected{% endif %}>{{ v }}</option>{% endfor %}</select></div>
+    <div class="col-md-4 col-lg-2"><label class="form-label" for="difficulty">Difficulty</label><select class="form-select" id="difficulty" name="difficulty"><option value="">All levels</option><option value="easy" {% if difficulty == 'easy' %}selected{% endif %}>Easy</option><option value="medium" {% if difficulty == 'medium' %}selected{% endif %}>Medium</option><option value="hard" {% if difficulty == 'hard' %}selected{% endif %}>Hard</option></select></div>
+    <div class="col-lg-2 d-flex align-items-end gap-2"><button class="btn btn-outline-primary flex-grow-1">Filter</button><a class="btn btn-outline-secondary" href="{{ url_for('main.questions') }}">Reset</a></div>
+  </div>
+</form>
+<p class="text-muted small">{{ questions|length }} question(s) found</p>
 {% if questions %}
-<div class="table-responsive"><table class="table table-striped"><thead><tr><th>ID</th><th>Subject / topic</th><th>Question</th><th>Difficulty</th><th>Marks</th></tr></thead><tbody>
-{% for q in questions %}<tr><td>{{ q.id }}</td><td>{{ q.subject }}<br><small class="text-muted">{{ q.topic }}</small></td><td>{{ q.question_text }}</td><td>{{ q.difficulty }}</td><td>{{ q.marks }}</td></tr>{% endfor %}
-</tbody></table></div>
-{% else %}<p class="text-muted">No questions found. Add your first question.</p>{% endif %}
+<div class="table-responsive"><table class="table table-striped table-hover align-middle bg-white">
+<thead><tr><th>ID</th><th>Question / options</th><th>Subject / topic</th><th>Difficulty</th><th>Marks</th><th>Actions</th></tr></thead><tbody>
+{% for q in questions %}<tr>
+<td>{{ q.id }}</td><td><div class="fw-semibold">{{ q.question_text }}</div><details class="small mt-1"><summary>View options</summary><ol type="A"><li>{{ q.option_a }}</li><li>{{ q.option_b }}</li><li>{{ q.option_c }}</li><li>{{ q.option_d }}</li></ol><span class="text-muted">Stored correct option: {{ q.correct_option }}</span></details></td>
+<td>{{ q.subject }}<br><small class="text-muted">{{ q.topic }}</small></td><td><span class="badge text-bg-secondary">{{ q.difficulty|capitalize }}</span></td><td>{{ q.marks }}</td>
+<td><div class="d-flex flex-wrap gap-2"><a class="btn btn-sm btn-outline-primary" href="{{ url_for('main.edit_question', question_id=q.id) }}">Edit</a>
+<form method="post" action="{{ url_for('main.delete_question', question_id=q.id) }}" onsubmit="return confirm('Delete question #{{ q.id }}? This cannot be undone.');"><button class="btn btn-sm btn-outline-danger">Delete</button></form></div></td>
+</tr>{% endfor %}</tbody></table></div>
+{% else %}<div class="alert alert-light border">No questions match those filters. Reset filters or add a question.</div>{% endif %}
 {% endblock %}

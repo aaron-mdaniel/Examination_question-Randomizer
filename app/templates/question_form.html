@@ -1,19 +1,28 @@
 {% extends "base.html" %}
-{% block title %}Add question | Exam Randomizer{% endblock %}
+{% block title %}{% if editing %}Edit question{% else %}Add question{% endif %} | Exam Randomizer{% endblock %}
 {% block content %}
-<h1 class="h2 mb-3">Add a multiple-choice question</h1>
-<form method="post" class="card card-body">
-  <div class="row g-3">
-    <div class="col-md-6"><label class="form-label">Subject</label><input class="form-control" name="subject" required></div>
-    <div class="col-md-6"><label class="form-label">Topic</label><input class="form-control" name="topic" value="General"></div>
-    <div class="col-md-6"><label class="form-label">Difficulty</label><select class="form-select" name="difficulty"><option value="easy">Easy</option><option value="medium" selected>Medium</option><option value="hard">Hard</option></select></div>
-    <div class="col-md-6"><label class="form-label">Marks</label><input class="form-control" type="number" min="1" name="marks" value="1" required></div>
-    <div class="col-12"><label class="form-label">Question text</label><textarea class="form-control" name="question_text" rows="3" required></textarea></div>
-    {% for letter in ['A','B','C','D'] %}
-    <div class="col-md-6"><label class="form-label">Option {{ letter }}</label><input class="form-control" name="option_{{ letter|lower }}" required></div>
-    {% endfor %}
-    <div class="col-md-6"><label class="form-label">Correct option</label><select class="form-select" name="correct_option" required><option value="A">A</option><option value="B">B</option><option value="C">C</option><option value="D">D</option></select></div>
-  </div>
-  <div class="mt-4 d-flex gap-2"><button class="btn btn-primary">Save question</button><a class="btn btn-outline-secondary" href="{{ url_for('main.questions') }}">Cancel</a></div>
-</form>
+<h1 class="h2 mb-1">{% if editing %}Edit question #{{ question_id }}{% else %}Add a multiple-choice question{% endif %}</h1>
+<p class="text-muted mb-3">Fill in all four options and select the correct answer.</p>
+{% set subject_value = question.subject if question and question.subject is defined else (question.get('subject', '') if question else '') %}
+{% set topic_value = question.topic if question and question.topic is defined else (question.get('topic', 'General') if question else 'General') %}
+{% set difficulty_value = question.difficulty if question and question.difficulty is defined else (question.get('difficulty', 'medium') if question else 'medium') %}
+{% set text_value = question.question_text if question and question.question_text is defined else (question.get('question_text', '') if question else '') %}
+{% set a_value = question.option_a if question and question.option_a is defined else (question.get('option_a', '') if question else '') %}
+{% set b_value = question.option_b if question and question.option_b is defined else (question.get('option_b', '') if question else '') %}
+{% set c_value = question.option_c if question and question.option_c is defined else (question.get('option_c', '') if question else '') %}
+{% set d_value = question.option_d if question and question.option_d is defined else (question.get('option_d', '') if question else '') %}
+{% set correct_value = question.correct_option if question and question.correct_option is defined else (question.get('correct_option', 'A') if question else 'A') %}
+{% set marks_value = question.marks if question and question.marks is defined else (question.get('marks', 1) if question else 1) %}
+<form method="post" class="card card-body"><div class="row g-3">
+<div class="col-md-6"><label class="form-label" for="subject">Subject</label><input class="form-control" id="subject" name="subject" value="{{ subject_value }}" required></div>
+<div class="col-md-6"><label class="form-label" for="topic">Topic</label><input class="form-control" id="topic" name="topic" value="{{ topic_value or 'General' }}"></div>
+<div class="col-md-6"><label class="form-label" for="difficulty">Difficulty</label><select class="form-select" id="difficulty" name="difficulty" required>{% for v in ['easy','medium','hard'] %}<option value="{{ v }}" {% if difficulty_value == v %}selected{% endif %}>{{ v|capitalize }}</option>{% endfor %}</select></div>
+<div class="col-md-6"><label class="form-label" for="marks">Marks</label><input class="form-control" id="marks" type="number" min="1" name="marks" value="{{ marks_value }}" required></div>
+<div class="col-12"><label class="form-label" for="question_text">Question text</label><textarea class="form-control" id="question_text" name="question_text" rows="3" required>{{ text_value }}</textarea></div>
+<div class="col-md-6"><label class="form-label" for="option_a">Option A</label><input class="form-control" id="option_a" name="option_a" value="{{ a_value }}" required></div>
+<div class="col-md-6"><label class="form-label" for="option_b">Option B</label><input class="form-control" id="option_b" name="option_b" value="{{ b_value }}" required></div>
+<div class="col-md-6"><label class="form-label" for="option_c">Option C</label><input class="form-control" id="option_c" name="option_c" value="{{ c_value }}" required></div>
+<div class="col-md-6"><label class="form-label" for="option_d">Option D</label><input class="form-control" id="option_d" name="option_d" value="{{ d_value }}" required></div>
+<div class="col-md-6"><label class="form-label" for="correct_option">Correct option</label><select class="form-select" id="correct_option" name="correct_option" required>{% for v in ['A','B','C','D'] %}<option value="{{ v }}" {% if correct_value == v %}selected{% endif %}>{{ v }}</option>{% endfor %}</select></div>
+</div><div class="mt-4 d-flex flex-wrap gap-2"><button class="btn btn-primary">{% if editing %}Save changes{% else %}Add question{% endif %}</button><a class="btn btn-outline-secondary" href="{{ url_for('main.questions') }}">Cancel</a></div></form>
 {% endblock %}
