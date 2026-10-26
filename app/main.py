@@ -1,5 +1,6 @@
 import json
 import random
+from collections import defaultdict
 from functools import wraps
 from flask import Blueprint, abort, flash, redirect, render_template, request, url_for
 from flask_login import current_user, login_required
@@ -275,32 +276,257 @@ def exam_blueprint(exam_id):
         difficulty_counts=difficulty_counts
     )
 
+def select_blueprint_questions(questions, topic_counts, difficulty_counts):
+    """
+    Select unique questions satisfying exact topic and difficulty quotas.
+    Returns a list of questions, or None if no valid selection exists.
+    """
+    topics = list(topic_counts)
+    difficulties = list(difficulty_counts)
+
+    required = sum(topic_counts.values())
+
+    if required != sum(difficulty_counts.values()):
+        return None
+
+    # Group questions by topic and difficulty.
+    buckets = defaultdict(list)
+
+    for question in questions:
+        topic = question.topic.strip()
+        difficulty = question.difficulty.strip().lower()
+
+        if topic in topic_counts and difficulty in difficulties:
+            buckets[(topic, difficulty)].append(question)
+
+    # Source -> topic -> difficulty -> sink.
+    source = 0
+    topic_start = 1
+    difficulty_start = topic_start + len(topics)
+    sink = difficulty_start + len(difficulties)
+    graph = [[] for _ in range(sink + 1)]
+
+    def add_edge(u, v, capacity):
+        forward = [v, len(graph[v]), capacity]
+        backward = [u, len(graph[u]), 0]
+        graph[u].append(forward)
+        graph[v].append(backward)
+        return forward
+
+    for i, topic in enumerate(topics):
+        add_edge(source, topic_start + i, topic_counts[topic])
+
+    bucket_edges = {}
+
+    for i, topic in enumerate(topics):
+        for j, difficulty in enumerate(difficulties):
+            available = len(buckets[(topic, difficulty)])
+            edge = add_edge(
+                topic_start + i,
+                difficulty_start + j,
+                available,
+            )
+            bucket_edges[(topic, difficulty)] = edge
+
+    for j, difficulty in enumerate(difficulties):
+        add_edge(
+            difficulty_start + j,
+            sink,
+            difficulty_counts[difficulty],
+        )
+
+    # Edmonds-Karp maximum-flow algorithm.
+    flow = 0
+
+    while True:
+        parent = [None] * len(graph)
+        parent[source] = (-1, -1)
+        queue = [source]
+
+        for u in queue:
+            for edge_index, edge in enumerate(graph[u]):
+                v, _, capacity = edge
+
+                if capacity > 0 and parent[v] is None:
+                    parent[v] = (u, edge_index)
+                    queue.append(v)
+
+                    if v == sink:
+                        break
+
+            if parent[sink] is not None:
+                break
+
+        if parent[sink] is None:
+            break
+
+        amount = float("inf")
+        v = sink
+
+        while v != source:
+            u, edge_index = parent[v]
+            amount = min(amount, graph[u][edge_index][2])
+            v = u
+
+        v = sink
+
+        while v != source:
+            u, edge_index = parent[v]
+            edge = graph[u][edge_index]
+            edge[2] -= amount
+            graph[v][edge[1]][2] += amount
+            v = u
+
+        flow += amount
+
+    if flow != required:
+        return None
+
+    # Randomly choose the required number from each topic/difficulty bucket.
+    selected = []
+
+    for key, edge in bucket_edges.items():
+        used = edge[2]  # Remaining capacity after flow.
+        # Recover the actual flow from the original capacity.
+        original_capacity = len(buckets[key])
+        count = original_capacity - used
+
+        candidates = buckets[key][:]
+        random.shuffle(candidates)
+        selected.extend(candidates[:count])
+
+    random.shuffle(selected)
+    return selected
+
+
 @main_bp.route("/exams/<int:exam_id>/generate", methods=["POST"])
 @teacher_required
 def generate_paper(exam_id):
     exam = db.session.get(Exam, exam_id)
-    if not exam: abort(404)
-    query = Question.query.filter_by(subject=exam.subject)
-    if exam.difficulty != "any": query = query.filter_by(difficulty=exam.difficulty)
-    pool = query.all()
-    if len(pool) < exam.question_count:
-        flash(f"Not enough questions: this exam needs {exam.question_count}, but only {len(pool)} match its filters.", "danger")
-        return redirect(url_for("main.dashboard"))
+
+    if exam is None:
+        abort(404)
+
+    # Check whether this exam has a saved blueprint.
+    blueprint = ExamBlueprint.query.filter_by(
+        exam_id=exam.id
+    ).first()
+
     rng = random.SystemRandom()
-    selected = rng.sample(pool, exam.question_count)
-    ids, option_orders = [], {}
+
+    if blueprint:
+        # Blueprint requirements override the exam's general difficulty.
+        pool = Question.query.filter_by(
+            subject=exam.subject
+        ).all()
+
+        try:
+            topic_counts = json.loads(
+                blueprint.topic_counts_json
+            )
+            difficulty_counts = json.loads(
+                blueprint.difficulty_counts_json
+            )
+        except (TypeError, ValueError):
+            flash(
+                "The saved blueprint is invalid. Please configure it again.",
+                "danger",
+            )
+            return redirect(
+                url_for("main.exam_blueprint", exam_id=exam.id)
+            )
+
+        selected = select_blueprint_questions(
+            pool,
+            topic_counts,
+            difficulty_counts,
+        )
+
+        if selected is None:
+            flash(
+                "Cannot generate the paper. The question bank "
+                "cannot satisfy the required topic and difficulty "
+                "distributions. Add suitable questions or update "
+                "the blueprint.",
+                "danger",
+            )
+            return redirect(url_for("main.dashboard"))
+
+    else:
+        # Preserve the original behavior when no blueprint exists.
+        query = Question.query.filter_by(
+            subject=exam.subject
+        )
+
+        if exam.difficulty != "any":
+            query = query.filter_by(
+                difficulty=exam.difficulty
+            )
+
+        pool = query.all()
+
+        if len(pool) < exam.question_count:
+            flash(
+                f"Not enough questions: this exam needs "
+                f"{exam.question_count}, but only {len(pool)} "
+                "match its filters.",
+                "danger",
+            )
+            return redirect(url_for("main.dashboard"))
+
+        selected = rng.sample(
+            pool,
+            exam.question_count,
+        )
+
+    # Final safeguard: verify the required number was selected.
+    if len(selected) != exam.question_count:
+        flash(
+            "The selected questions do not match the exam's "
+            "required question count. Please review the blueprint.",
+            "danger",
+        )
+        return redirect(url_for("main.dashboard"))
+
+    # Preserve the existing option randomization and paper-saving logic.
+    ids = []
+    option_orders = {}
+
     for question in selected:
         ids.append(question.id)
-        option_orders[str(question.id)] = rng.sample(["A", "B", "C", "D"], 4)
-    paper = GeneratedPaper(exam_id=exam.id, question_ids_json=json.dumps(ids),
-        option_orders_json=json.dumps(option_orders))
+        option_orders[str(question.id)] = rng.sample(
+            ["A", "B", "C", "D"],
+            4,
+        )
+
+    paper = GeneratedPaper(
+        exam_id=exam.id,
+        question_ids_json=json.dumps(ids),
+        option_orders_json=json.dumps(option_orders),
+    )
+
     db.session.add(paper)
     db.session.flush()
+
     for position, question in enumerate(selected, start=1):
-        db.session.add(GeneratedPaperQuestion(paper_id=paper.id, question_id=question.id, position=position))
+        db.session.add(
+            GeneratedPaperQuestion(
+                paper_id=paper.id,
+                question_id=question.id,
+                position=position,
+            )
+        )
+
     db.session.commit()
-    flash(f"Generated randomized paper #{paper.id}.", "success")
-    return redirect(url_for("main.paper", paper_id=paper.id))
+
+    flash(
+        f"Generated randomized paper #{paper.id}.",
+        "success",
+    )
+
+    return redirect(
+        url_for("main.paper", paper_id=paper.id)
+    )
 
 @main_bp.route("/papers/<int:paper_id>")
 @teacher_required
