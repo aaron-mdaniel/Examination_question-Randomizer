@@ -5,3 +5,10 @@ venv/
 .env
 instance/
 .pytest_cache/
+
+
+# IDE
+.vscode/
+
+# Generated files
+*.log
