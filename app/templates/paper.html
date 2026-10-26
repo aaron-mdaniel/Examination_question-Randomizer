@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}Generated paper | Exam Randomizer{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3"><div><h1 class="h2">Generated question paper #{{ paper.id }}</h1><p class="text-muted">Exam ID {{ paper.exam_id }} · Generated {{ paper.generated_at.strftime('%Y-%m-%d %H:%M') }}</p></div><button class="btn btn-outline-secondary" onclick="window.print()">Print</button></div>
+{% for q in questions %}
+<div class="card card-body mb-3">
+  <div class="fw-semibold mb-2">{{ loop.index }}. {{ q.question_text }} <span class="text-muted">({{ q.marks }} mark{% if q.marks != 1 %}s{% endif %})</span></div>
+  {% set options = {'A': q.option_a, 'B': q.option_b, 'C': q.option_c, 'D': q.option_d} %}
+  {% for key in orders[q.id|string] %}
+  <div>{{ loop.index }}. {{ options[key] }}</div>
+  {% endfor %}
+</div>
+{% endfor %}
+<p class="text-muted small">This is a generated preview. Student delivery, answer-key export, and exam attempts will be added in later phases.</p>
+{% endblock %}

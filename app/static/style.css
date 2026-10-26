@@ -1,0 +1,4 @@
+body { background: #f7f8fb; }
+.card { border: 1px solid #e5e7eb; box-shadow: 0 2px 8px rgba(15, 23, 42, .03); }
+.navbar .nav-link { padding-left: .25rem; padding-right: .25rem; }
+@media print { .navbar, button, .text-muted.small { display: none !important; } body { background: white; } }

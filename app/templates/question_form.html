@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}Add question | Exam Randomizer{% endblock %}
+{% block content %}
+<h1 class="h2 mb-3">Add a multiple-choice question</h1>
+<form method="post" class="card card-body">
+  <div class="row g-3">
+    <div class="col-md-6"><label class="form-label">Subject</label><input class="form-control" name="subject" required></div>
+    <div class="col-md-6"><label class="form-label">Topic</label><input class="form-control" name="topic" value="General"></div>
+    <div class="col-md-6"><label class="form-label">Difficulty</label><select class="form-select" name="difficulty"><option value="easy">Easy</option><option value="medium" selected>Medium</option><option value="hard">Hard</option></select></div>
+    <div class="col-md-6"><label class="form-label">Marks</label><input class="form-control" type="number" min="1" name="marks" value="1" required></div>
+    <div class="col-12"><label class="form-label">Question text</label><textarea class="form-control" name="question_text" rows="3" required></textarea></div>
+    {% for letter in ['A','B','C','D'] %}
+    <div class="col-md-6"><label class="form-label">Option {{ letter }}</label><input class="form-control" name="option_{{ letter|lower }}" required></div>
+    {% endfor %}
+    <div class="col-md-6"><label class="form-label">Correct option</label><select class="form-select" name="correct_option" required><option value="A">A</option><option value="B">B</option><option value="C">C</option><option value="D">D</option></select></div>
+  </div>
+  <div class="mt-4 d-flex gap-2"><button class="btn btn-primary">Save question</button><a class="btn btn-outline-secondary" href="{{ url_for('main.questions') }}">Cancel</a></div>
+</form>
+{% endblock %}

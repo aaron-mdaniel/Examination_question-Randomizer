@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block title %}Home | Exam Randomizer{% endblock %}
+{% block content %}
+<div class="p-5 bg-light rounded-3">
+  <h1>Online Exam Question Randomization Tool</h1>
+  <p class="lead">Create question banks, configure exams, and generate randomized question papers.</p>
+  <a class="btn btn-primary btn-lg" href="{{ url_for('auth.login') }}">Sign in</a>
+</div>
+{% endblock %}

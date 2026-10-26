@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block title %}Question bank | Exam Randomizer{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3"><h1 class="h2">Question bank</h1><a class="btn btn-primary" href="{{ url_for('main.new_question') }}">Add question</a></div>
+<form class="row g-2 mb-3"><div class="col-auto"><input class="form-control" name="subject" value="{{ subject }}" placeholder="Filter by subject"></div><div class="col-auto"><button class="btn btn-outline-secondary">Filter</button></div></form>
+{% if questions %}
+<div class="table-responsive"><table class="table table-striped"><thead><tr><th>ID</th><th>Subject / topic</th><th>Question</th><th>Difficulty</th><th>Marks</th></tr></thead><tbody>
+{% for q in questions %}<tr><td>{{ q.id }}</td><td>{{ q.subject }}<br><small class="text-muted">{{ q.topic }}</small></td><td>{{ q.question_text }}</td><td>{{ q.difficulty }}</td><td>{{ q.marks }}</td></tr>{% endfor %}
+</tbody></table></div>
+{% else %}<p class="text-muted">No questions found. Add your first question.</p>{% endif %}
+{% endblock %}
