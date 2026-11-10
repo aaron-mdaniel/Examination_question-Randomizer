@@ -42,3 +42,28 @@
 </tbody></table></div>
 {% else %}<p class="text-muted">No exams yet. Create an exam configuration to get started.</p>{% endif %}
 {% endblock %}
+
+{% if current_user.role == 'teacher' %}
+<hr class="my-4">
+<h2 class="h4">Recently generated papers</h2>
+{% if recent_papers %}
+<div class="table-responsive">
+<table class="table table-striped align-middle">
+<thead><tr><th>Paper</th><th>Exam</th><th>Generated</th><th>Questions</th><th>Action</th></tr></thead>
+<tbody>
+{% for paper in recent_papers %}
+<tr>
+  <td>#{{ paper.id }}</td>
+  <td>{{ exam_map.get(paper.exam_id).title if exam_map.get(paper.exam_id) else 'Exam #' ~ paper.exam_id }}</td>
+  <td>{{ paper.generated_at.strftime('%Y-%m-%d %H:%M') }}</td>
+  <td>{{ paper.question_ids_json.count(',') + 1 if paper.question_ids_json else 0 }}</td>
+  <td><a class="btn btn-sm btn-outline-primary" href="{{ url_for('main.paper', paper_id=paper.id) }}">Preview</a></td>
+</tr>
+{% endfor %}
+</tbody>
+</table>
+</div>
+{% else %}
+<p class="text-muted">No papers have been generated yet.</p>
+{% endif %}
+{% endif %}

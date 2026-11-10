@@ -8,7 +8,7 @@ Starter implementation using Flask, Flask-SQLAlchemy, Flask-Login, and SQLite fo
 - Exam configuration by subject, question count, duration, and difficulty
 - Random question selection without enumerating all combinations
 - Randomized option order stored with each generated paper
-- Printable generated-paper preview
+- Printable generated-paper preview\n- Blueprint validation on generated papers\n- Individual question replacement while preserving topic/difficulty quotas\n- Full paper regeneration and generated-paper history
 
 ## 1. Requirements
 - Python 3.10 or newer
@@ -68,3 +68,10 @@ To use PostgreSQL later, set `DATABASE_URL` in a `.env` file and install a Postg
 - This is a learning/MVP scaffold, not production-ready.
 - CSRF protection, registration flows, password reset, exam attempts, answer submission, grading, and audit logs are not implemented yet.
 - Option shuffling is stored as the original option keys. The displayed option labels are currently numbered in the preview; a later phase should show stable option IDs and implement a separate answer key.
+
+## Phase 5: Generated paper validation and preview
+- Open a generated paper to see its question count, duration, total marks, topic distribution, and difficulty distribution.
+- Use **Replace this question** to select an unused question from the same topic/difficulty cell when a blueprint exists.
+- Use **Regenerate full paper** to generate a new paper using the exam's saved blueprint.
+- The dashboard lists the most recently generated papers.
+- Replacements do not modify the original question bank. A replacement is stored only in the selected generated paper.

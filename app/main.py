@@ -29,7 +29,25 @@ def index():
 def dashboard():
     question_count = Question.query.count()
     exams = Exam.query.order_by(Exam.created_at.desc()).limit(10).all()
-    return render_template("dashboard.html", question_count=question_count, exams=exams)
+    recent_papers = (
+        GeneratedPaper.query
+        .order_by(GeneratedPaper.generated_at.desc())
+        .limit(10)
+        .all()
+    )
+    exam_map = {
+        exam.id: exam
+        for exam in Exam.query.filter(
+            Exam.id.in_([paper.exam_id for paper in recent_papers])
+        ).all()
+    } if recent_papers else {}
+    return render_template(
+        "dashboard.html",
+        question_count=question_count,
+        exams=exams,
+        recent_papers=recent_papers,
+        exam_map=exam_map,
+    )
 
 @main_bp.route("/questions")
 @teacher_required
@@ -528,13 +546,243 @@ def generate_paper(exam_id):
         url_for("main.paper", paper_id=paper.id)
     )
 
+def validate_generated_paper(exam, questions, blueprint=None):
+    """
+    Return a structured validation report for a saved generated paper.
+    """
+    issues = []
+    question_ids = [question.id for question in questions]
+
+    if len(questions) != exam.question_count:
+        issues.append(
+            f"Expected {exam.question_count} questions, found {len(questions)}."
+        )
+
+    if len(question_ids) != len(set(question_ids)):
+        issues.append("The paper contains duplicate question IDs.")
+
+    if any(question.subject != exam.subject for question in questions):
+        issues.append("One or more questions do not belong to the exam subject.")
+
+    if blueprint:
+        try:
+            topic_counts = json.loads(blueprint.topic_counts_json)
+            difficulty_counts = json.loads(blueprint.difficulty_counts_json)
+        except (TypeError, ValueError):
+            return {
+                "valid": False,
+                "issues": ["The saved blueprint JSON is invalid."],
+                "topic_actual": {},
+                "difficulty_actual": {},
+                "topic_expected": {},
+                "difficulty_expected": {},
+            }
+
+        topic_actual = defaultdict(int)
+        difficulty_actual = defaultdict(int)
+
+        for question in questions:
+            topic_actual[question.topic.strip()] += 1
+            difficulty_actual[question.difficulty.strip().lower()] += 1
+
+        for topic, expected in topic_counts.items():
+            actual = topic_actual.get(topic, 0)
+            if actual != expected:
+                issues.append(
+                    f"Topic '{topic}': expected {expected}, found {actual}."
+                )
+
+        for level, expected in difficulty_counts.items():
+            actual = difficulty_actual.get(level, 0)
+            if actual != expected:
+                issues.append(
+                    f"Difficulty '{level}': expected {expected}, found {actual}."
+                )
+
+        return {
+            "valid": not issues,
+            "issues": issues,
+            "topic_actual": dict(topic_actual),
+            "difficulty_actual": dict(difficulty_actual),
+            "topic_expected": topic_counts,
+            "difficulty_expected": difficulty_counts,
+        }
+
+    if exam.difficulty != "any":
+        wrong_difficulty = [
+            question for question in questions
+            if question.difficulty.lower() != exam.difficulty.lower()
+        ]
+        if wrong_difficulty:
+            issues.append(
+                f"All questions must have '{exam.difficulty}' difficulty."
+            )
+
+    return {
+        "valid": not issues,
+        "issues": issues,
+        "topic_actual": {},
+        "difficulty_actual": {},
+        "topic_expected": {},
+        "difficulty_expected": {},
+    }
+
+
+def save_paper_questions(paper, selected):
+    """Persist question order and a separate randomized option order."""
+    rng = random.SystemRandom()
+    ids = [question.id for question in selected]
+    option_orders = {
+        str(question.id): rng.sample(["A", "B", "C", "D"], 4)
+        for question in selected
+    }
+
+    paper.question_ids_json = json.dumps(ids)
+    paper.option_orders_json = json.dumps(option_orders)
+
+    GeneratedPaperQuestion.query.filter_by(paper_id=paper.id).delete()
+    for position, question in enumerate(selected, start=1):
+        db.session.add(
+            GeneratedPaperQuestion(
+                paper_id=paper.id,
+                question_id=question.id,
+                position=position,
+            )
+        )
+
+
 @main_bp.route("/papers/<int:paper_id>")
 @teacher_required
 def paper(paper_id):
-    paper = db.session.get(GeneratedPaper, paper_id)
-    if not paper: abort(404)
-    ids = json.loads(paper.question_ids_json)
-    orders = json.loads(paper.option_orders_json)
-    by_id = {q.id: q for q in Question.query.filter(Question.id.in_(ids)).all()}
+    generated_paper = db.session.get(GeneratedPaper, paper_id)
+    if generated_paper is None:
+        abort(404)
+
+    exam = db.session.get(Exam, generated_paper.exam_id)
+    if exam is None:
+        abort(404)
+
+    try:
+        ids = json.loads(generated_paper.question_ids_json)
+        orders = json.loads(generated_paper.option_orders_json)
+    except (TypeError, ValueError):
+        abort(500, description="This generated paper contains invalid saved data.")
+
+    if not isinstance(ids, list) or not ids:
+        abort(500, description="This generated paper has no valid question list.")
+
+    by_id = {
+        question.id: question
+        for question in Question.query.filter(Question.id.in_(ids)).all()
+    }
     ordered = [by_id[qid] for qid in ids if qid in by_id]
-    return render_template("paper.html", paper=paper, questions=ordered, orders=orders)
+
+    blueprint = ExamBlueprint.query.filter_by(exam_id=exam.id).first()
+    validation = validate_generated_paper(exam, ordered, blueprint)
+
+    # Every question must have a valid permutation of the four original option keys.
+    for question in ordered:
+        option_order = orders.get(str(question.id))
+        if not isinstance(option_order, list) or sorted(option_order) != ["A", "B", "C", "D"]:
+            validation["issues"].append(
+                f"Question #{question.id} has an invalid saved option order."
+            )
+    validation["valid"] = not validation["issues"]
+
+    return render_template(
+        "paper.html",
+        paper=generated_paper,
+        exam=exam,
+        questions=ordered,
+        orders=orders,
+        validation=validation,
+    )
+
+
+@main_bp.route(
+    "/papers/<int:paper_id>/questions/<int:question_id>/replace",
+    methods=["POST"],
+)
+@teacher_required
+def replace_paper_question(paper_id, question_id):
+    generated_paper = db.session.get(GeneratedPaper, paper_id)
+    if generated_paper is None:
+        abort(404)
+
+    exam = db.session.get(Exam, generated_paper.exam_id)
+    if exam is None:
+        abort(404)
+
+    try:
+        ids = json.loads(generated_paper.question_ids_json)
+        orders = json.loads(generated_paper.option_orders_json)
+    except (TypeError, ValueError):
+        flash("The saved paper data is invalid and cannot be modified.", "danger")
+        return redirect(url_for("main.paper", paper_id=paper_id))
+
+    if question_id not in ids:
+        abort(404)
+
+    old_question = db.session.get(Question, question_id)
+    if old_question is None:
+        flash("The question being replaced no longer exists.", "danger")
+        return redirect(url_for("main.paper", paper_id=paper_id))
+
+    blueprint = ExamBlueprint.query.filter_by(exam_id=exam.id).first()
+    query = Question.query.filter(
+        Question.subject == exam.subject,
+        Question.id.notin_(ids),
+    )
+
+    # A blueprint replacement must stay in the same topic/difficulty cell.
+    if blueprint:
+        query = query.filter(
+            Question.topic == old_question.topic,
+            db.func.lower(Question.difficulty)
+            == old_question.difficulty.lower(),
+        )
+    elif exam.difficulty != "any":
+        query = query.filter(
+            db.func.lower(Question.difficulty) == exam.difficulty.lower()
+        )
+
+    candidates = query.all()
+    if not candidates:
+        flash(
+            "No unused question matches this question's replacement "
+            "requirements. Add another suitable question to the question bank.",
+            "warning",
+        )
+        return redirect(url_for("main.paper", paper_id=paper_id))
+
+    replacement = random.SystemRandom().choice(candidates)
+    position = ids.index(question_id)
+    ids[position] = replacement.id
+
+    # Keep the position, but generate a fresh option order for the new question.
+    orders.pop(str(question_id), None)
+    orders[str(replacement.id)] = random.SystemRandom().sample(
+        ["A", "B", "C", "D"], 4
+    )
+
+    generated_paper.question_ids_json = json.dumps(ids)
+    generated_paper.option_orders_json = json.dumps(orders)
+
+    GeneratedPaperQuestion.query.filter_by(
+        paper_id=generated_paper.id,
+        question_id=question_id,
+    ).delete()
+    db.session.add(
+        GeneratedPaperQuestion(
+            paper_id=generated_paper.id,
+            question_id=replacement.id,
+            position=position + 1,
+        )
+    )
+
+    db.session.commit()
+    flash(
+        f"Question #{question_id} was replaced with question #{replacement.id}.",
+        "success",
+    )
+    return redirect(url_for("main.paper", paper_id=paper_id))
